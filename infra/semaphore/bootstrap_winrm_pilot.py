@@ -308,9 +308,9 @@ def main() -> int:
         {
             "ansible_connection": env("WINRM_CONNECTION", "psrp"),
             "ansible_port": int(env("WINRM_PORT", "5985")),
-            "ansible_psrp_auth": env("WINRM_PSRP_AUTH", "ntlm"),
+            "ansible_psrp_auth": env("WINRM_PSRP_AUTH", "negotiate"),
             "ansible_psrp_cert_validation": env("WINRM_CERT_VALIDATION", "ignore"),
-            "ansible_user": env("WINRM_USERNAME", required=True),
+            "ansible_user": env("WINRM_USERNAME", "Administrator", required=True),
             "ansible_password": env("WINRM_PASSWORD", required=True),
         },
     )

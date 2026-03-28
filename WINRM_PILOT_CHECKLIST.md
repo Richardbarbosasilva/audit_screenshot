@@ -72,9 +72,9 @@ win-server-01 ansible_host=192.168.1.20
 
 [pilot:vars]
 ansible_connection=psrp
-ansible_user=LAB\\Administrator
+ansible_user=Administrator
 ansible_password=CHANGE_ME
-ansible_psrp_auth=ntlm
+ansible_psrp_auth=negotiate
 ansible_port=5985
 ansible_psrp_cert_validation=ignore
 ```
