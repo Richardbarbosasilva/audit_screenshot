@@ -10,6 +10,8 @@
     - name: Check required agent artifacts on controller
       delegate_to: localhost
       become: false
+      vars:
+        ansible_connection: local
       ansible.builtin.stat:
         path: "{{ item.path }}"
       loop:
@@ -24,6 +26,8 @@
     - name: Fail when agent artifacts are missing on controller
       delegate_to: localhost
       become: false
+      vars:
+        ansible_connection: local
       ansible.builtin.assert:
         that:
           - item.stat.exists
