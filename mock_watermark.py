@@ -848,6 +848,11 @@ def main() -> int:
     ensure_directories(config)
     logger = setup_logging(config["paths"]["log_path"], config["log_level"])
     logger.info("Iniciando Screenshot Audit Agent")
+    logger.info(
+        "Versao do agent: %s | ShareX profile: %s",
+        config["agent_version"],
+        config["sharex_profile_version"],
+    )
     logger.info("Spool: %s", config["paths"]["spool_dir"])
     logger.info("Tmp: %s", config["paths"]["tmp_dir"])
     logger.info("Queue DB: %s", config["paths"]["db_path"])

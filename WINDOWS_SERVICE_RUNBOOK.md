@@ -11,7 +11,7 @@ No lab, o endpoint correto do storage e o S3 publicado em `http://s3.homelab.loc
 ## Estrutura recomendada no endpoint
 
 - `C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe`
-- `C:\Program Files\ScreenshotAudit\agent_config.json`
+- `%ProgramData%\ScreenshotAudit\agent_config.json`
 - `%ProgramData%\ScreenshotAudit\spool`
 - `%ProgramData%\ScreenshotAudit\tmp`
 - `%ProgramData%\ScreenshotAudit\data\queue.db`
@@ -66,7 +66,7 @@ New-Item -ItemType Directory -Force -Path "$env:ProgramData\ScreenshotAudit\logs
 Copie:
 
 - `dist\ScreenshotAuditAgent.exe` para `C:\Program Files\ScreenshotAudit\`
-- `agent_config.json` para `C:\Program Files\ScreenshotAudit\`
+- `agent_config.json` para `%ProgramData%\ScreenshotAudit\`
 - `logo.png` para `%ProgramData%\ScreenshotAudit\assets\`
 
 ## 5. Instalar como servico com NSSM
@@ -78,7 +78,7 @@ Para piloto, use NSSM. E o jeito mais simples para um executavel console rodar b
 3. Rode:
 
 ```powershell
-C:\Tools\nssm\nssm.exe install ScreenshotAuditAgent "C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe" --config "C:\Program Files\ScreenshotAudit\agent_config.json"
+C:\Tools\nssm\nssm.exe install ScreenshotAuditAgent "C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe" --config "$env:ProgramData\ScreenshotAudit\agent_config.json"
 C:\Tools\nssm\nssm.exe set ScreenshotAuditAgent AppDirectory "C:\Program Files\ScreenshotAudit"
 C:\Tools\nssm\nssm.exe set ScreenshotAuditAgent Start SERVICE_AUTO_START
 C:\Tools\nssm\nssm.exe set ScreenshotAuditAgent AppStdout "$env:ProgramData\ScreenshotAudit\logs\service-stdout.log"
@@ -97,7 +97,7 @@ Get-Service ScreenshotAuditAgent
 2. Execute um teste sem servico:
 
 ```powershell
-& "C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe" --config "C:\Program Files\ScreenshotAudit\agent_config.json" --once
+& "C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe" --config "$env:ProgramData\ScreenshotAudit\agent_config.json" --once
 ```
 
 3. Verifique os logs:

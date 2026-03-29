@@ -1,7 +1,7 @@
 param(
     [string]$ServiceName = "ScreenshotAuditAgent",
     [string]$BinaryPath = "C:\Program Files\ScreenshotAudit\ScreenshotAuditAgent.exe",
-    [string]$ConfigPath = "C:\Program Files\ScreenshotAudit\agent_config.json",
+    [string]$ConfigPath = "$env:ProgramData\ScreenshotAudit\agent_config.json",
     [string]$NssmPath = "C:\Tools\nssm\nssm.exe",
     [string]$ProgramDataRoot = "$env:ProgramData\ScreenshotAudit"
 )
