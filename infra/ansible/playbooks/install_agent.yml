@@ -7,6 +7,30 @@
     - ../group_vars/sharex_pilot.yml
 
   tasks:
+    - name: Check required agent artifacts on controller
+      delegate_to: localhost
+      become: false
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop:
+        - { path: "{{ agent_build_local_path }}", label: "agent executable" }
+        - { path: "{{ agent_config_local_path }}", label: "agent config" }
+        - { path: "{{ agent_logo_local_path }}", label: "agent logo" }
+        - { path: "{{ nssm_local_path }}", label: "nssm binary" }
+        - { path: "{{ install_agent_service_local_path }}", label: "service installer script" }
+      register: agent_artifacts
+      run_once: true
+
+    - name: Fail when agent artifacts are missing on controller
+      delegate_to: localhost
+      become: false
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: "Arquivo ausente no controller para {{ item.item.label }}: {{ item.stat.path }}"
+      loop: "{{ agent_artifacts.results }}"
+      run_once: true
+
     - name: Ensure agent directories exist
       ansible.windows.win_file:
         path: "{{ item }}"

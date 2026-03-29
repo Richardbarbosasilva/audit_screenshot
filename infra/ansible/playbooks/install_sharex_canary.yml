@@ -6,15 +6,50 @@
     - ../group_vars/sharex_pilot.yml
 
   tasks:
+    - name: Detect ShareX installation
+      ansible.windows.win_powershell:
+        script: |
+          $paths = @(
+            'C:\Program Files\ShareX\ShareX.exe',
+            'C:\Program Files (x86)\ShareX\ShareX.exe',
+            "$env:LOCALAPPDATA\Programs\ShareX\ShareX.exe"
+          )
+          $found = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($found) {
+            @{
+              exists = $true
+              path = $found
+              version = (Get-Item $found).VersionInfo.ProductVersion
+            } | ConvertTo-Json -Compress
+          } else {
+            @{
+              exists = $false
+              path = ''
+              version = ''
+            } | ConvertTo-Json -Compress
+          }
+      register: sharex_detect_raw
+
+    - name: Parse ShareX installation state
+      ansible.builtin.set_fact:
+        sharex_detect: "{{ sharex_detect_raw.output[0] | from_json }}"
+        sharex_needs_install: >-
+          {{
+            (not (sharex_detect_raw.output[0] | from_json).exists)
+            or ((sharex_detect_raw.output[0] | from_json).version != sharex_version)
+          }}
+
     - name: Ensure temp installer directory exists
       ansible.windows.win_file:
         path: C:\Windows\Temp
         state: directory
+      when: sharex_needs_install
 
     - name: Copy ShareX installer to remote host
       ansible.windows.win_copy:
         src: "{{ sharex_installer_local_path }}"
         dest: "{{ sharex_installer_remote_path }}"
+      when: sharex_needs_install
 
     - name: Install ShareX silently
       ansible.windows.win_package:
@@ -28,10 +63,16 @@
           - /UPDATE
         state: present
       register: sharex_install
+      when: sharex_needs_install
 
     - name: Show ShareX installation result
       ansible.builtin.debug:
         msg:
           - "Host: {{ inventory_hostname }}"
-          - "Changed: {{ sharex_install.changed }}"
+          - "Installed: {{ sharex_detect.exists }}"
+          - "Current path: {{ sharex_detect.path | default('not found') }}"
+          - "Current version: {{ sharex_detect.version | default('missing') }}"
+          - "Target version: {{ sharex_version }}"
+          - "Needs install/update: {{ sharex_needs_install }}"
+          - "Changed: {{ sharex_install.changed | default(false) }}"
           - "RC: {{ sharex_install.rc | default('n/a') }}"
