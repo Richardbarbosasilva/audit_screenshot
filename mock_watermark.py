@@ -577,14 +577,214 @@ def get_font(size: int):
 
 
 def build_watermark_text(*, username: str, hostname: str, internal_ip: str, external_ip: str, captured_at: str) -> str:
-    captured_display = datetime.fromisoformat(captured_at).strftime("%d/%m/%Y %H:%M:%S")
-    return (
-        f"USUARIO: {username} | "
-        f"HOST: {hostname} | "
-        f"IP_INTERNO: {internal_ip} | "
-        f"IP_EXTERNO: {external_ip} | "
-        f"DATA: {captured_display}"
+    return " | ".join(
+        build_watermark_segments(
+            username=username,
+            hostname=hostname,
+            internal_ip=internal_ip,
+            external_ip=external_ip,
+            captured_at=captured_at,
+        )
     )
+
+
+def build_watermark_segments(*, username: str, hostname: str, internal_ip: str, external_ip: str, captured_at: str) -> list[str]:
+    captured_display = datetime.fromisoformat(captured_at).strftime("%d/%m/%Y %H:%M:%S")
+    return [
+        f"USUARIO: {username}",
+        f"HOST: {hostname}",
+        f"IP_INTERNO: {internal_ip}",
+        f"IP_EXTERNO: {external_ip}",
+        f"DATA: {captured_display}",
+    ]
+
+
+def measure_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def wrap_watermark_segments(
+    draw: ImageDraw.ImageDraw,
+    *,
+    segments: list[str],
+    font: ImageFont.ImageFont,
+    max_width: int,
+) -> list[str]:
+    if max_width <= 0:
+        return [" | ".join(segments)]
+
+    lines: list[str] = []
+    current_line = ""
+
+    for segment in segments:
+        candidate = segment if not current_line else f"{current_line} | {segment}"
+        candidate_width, _ = measure_text(draw, candidate, font)
+        if candidate_width <= max_width:
+            current_line = candidate
+            continue
+
+        if current_line:
+            lines.append(current_line)
+            current_line = segment
+        else:
+            lines.extend(split_long_watermark_text(draw, segment, font, max_width))
+            current_line = ""
+
+    if current_line:
+        lines.append(current_line)
+
+    return lines or [" | ".join(segments)]
+
+
+def split_long_watermark_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.ImageFont,
+    max_width: int,
+) -> list[str]:
+    if max_width <= 0:
+        return [text]
+
+    tokens = text.split(" ")
+    lines: list[str] = []
+    current_line = ""
+
+    for token in tokens:
+        candidate = token if not current_line else f"{current_line} {token}"
+        candidate_width, _ = measure_text(draw, candidate, font)
+        if candidate_width <= max_width:
+            current_line = candidate
+            continue
+
+        if current_line:
+            lines.append(current_line)
+            current_line = token
+        else:
+            remaining = token
+            while remaining:
+                split_index = len(remaining)
+                while split_index > 1:
+                    prefix = remaining[:split_index]
+                    prefix_width, _ = measure_text(draw, prefix, font)
+                    if prefix_width <= max_width:
+                        break
+                    split_index -= 1
+                lines.append(remaining[:split_index])
+                remaining = remaining[split_index:]
+            current_line = ""
+
+    if current_line:
+        lines.append(current_line)
+
+    return lines or [text]
+
+
+def fit_watermark_layout(
+    draw: ImageDraw.ImageDraw,
+    *,
+    image_size: tuple[int, int],
+    segments: list[str],
+    logo_path: Path,
+) -> dict[str, Any]:
+    image_width, image_height = image_size
+    outer_padding = max(8, min(24, image_width // 50, image_height // 25))
+    inner_padding = max(8, min(14, image_width // 90))
+    gap = max(8, min(14, image_width // 120))
+    min_font_size = 10
+    max_font_size = max(min_font_size, min(28, image_width // 40, image_height // 10))
+
+    raw_logo = None
+    if logo_path.exists():
+        with Image.open(logo_path) as handle:
+            raw_logo = handle.convert("RGBA")
+
+    for layout in ("horizontal", "stacked"):
+        for font_size in range(max_font_size, min_font_size - 1, -1):
+            font = get_font(font_size)
+            _, line_height = measure_text(draw, "Ag", font)
+            line_gap = max(4, font_size // 3)
+
+            logo = None
+            logo_width = 0
+            logo_height = 0
+            if raw_logo is not None:
+                target_logo_height = max(22, line_height + (6 if layout == "horizontal" else 10))
+                scale = target_logo_height / max(1, raw_logo.height)
+                logo_width = max(1, int(raw_logo.width * scale))
+                logo_height = max(1, int(raw_logo.height * scale))
+                logo = raw_logo.resize((logo_width, logo_height), Image.LANCZOS)
+
+            max_box_width = max(120, image_width - (outer_padding * 2))
+            max_content_width = max(60, max_box_width - (inner_padding * 2))
+            reserved_logo_width = (logo_width + gap) if logo and layout == "horizontal" else 0
+            max_text_width = max(60, max_content_width - reserved_logo_width)
+
+            if layout == "horizontal" and logo and max_text_width < 120:
+                continue
+
+            lines = wrap_watermark_segments(
+                draw,
+                segments=segments,
+                font=font,
+                max_width=max_text_width,
+            )
+            line_widths = [measure_text(draw, line, font)[0] for line in lines]
+            text_width = max(line_widths) if line_widths else 0
+            text_height = (line_height * len(lines)) + (line_gap * max(0, len(lines) - 1))
+
+            if layout == "horizontal":
+                content_width = text_width + reserved_logo_width
+                content_height = max(text_height, logo_height)
+            else:
+                content_width = max(text_width, logo_width)
+                content_height = text_height + ((logo_height + gap) if logo else 0)
+
+            box_width = content_width + (inner_padding * 2)
+            box_height = content_height + (inner_padding * 2)
+
+            if box_width <= image_width - (outer_padding * 2) and box_height <= image_height - (outer_padding * 2):
+                return {
+                    "layout": layout,
+                    "font": font,
+                    "lines": lines,
+                    "line_height": line_height,
+                    "line_gap": line_gap,
+                    "outer_padding": outer_padding,
+                    "inner_padding": inner_padding,
+                    "gap": gap,
+                    "box_width": box_width,
+                    "box_height": box_height,
+                    "content_width": content_width,
+                    "content_height": content_height,
+                    "logo": logo,
+                    "logo_width": logo_width,
+                    "logo_height": logo_height,
+                    "text_width": text_width,
+                    "text_height": text_height,
+                }
+
+    font = get_font(min_font_size)
+    _, line_height = measure_text(draw, "Ag", font)
+    return {
+        "layout": "stacked",
+        "font": font,
+        "lines": wrap_watermark_segments(draw, segments=segments, font=font, max_width=max(80, image_width - 32)),
+        "line_height": line_height,
+        "line_gap": max(4, min_font_size // 3),
+        "outer_padding": 8,
+        "inner_padding": 8,
+        "gap": 8,
+        "box_width": max(120, image_width - 16),
+        "box_height": max(50, min(image_height - 16, image_height // 3)),
+        "content_width": max(80, image_width - 32),
+        "content_height": max(40, image_height // 5),
+        "logo": None,
+        "logo_width": 0,
+        "logo_height": 0,
+        "text_width": max(80, image_width - 32),
+        "text_height": line_height,
+    }
 
 
 def add_watermark(
@@ -603,58 +803,51 @@ def add_watermark(
         overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(overlay)
 
-        text = build_watermark_text(
+        segments = build_watermark_segments(
             username=username,
             hostname=hostname,
             internal_ip=internal_ip,
             external_ip=external_ip,
             captured_at=captured_at,
         )
-        font_size = max(16, image.width // 65)
-        font = get_font(font_size)
+        layout = fit_watermark_layout(
+            draw,
+            image_size=image.size,
+            segments=segments,
+            logo_path=logo_path,
+        )
 
-        text_bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-
-        outer_padding = 24
-        inner_padding = 14
-        gap_between_logo_and_text = 14
-        logo_max_height = max(30, text_height + 8)
-
-        logo = None
-        logo_width = 0
-        logo_height = 0
-        if logo_path.exists():
-            with Image.open(logo_path) as raw_logo:
-                logo = raw_logo.convert("RGBA")
-            scale = logo_max_height / max(1, logo.height)
-            logo_width = max(1, int(logo.width * scale))
-            logo_height = max(1, int(logo.height * scale))
-            logo = logo.resize((logo_width, logo_height), Image.LANCZOS)
-
-        content_width = text_width + (logo_width + gap_between_logo_and_text if logo else 0)
-        content_height = max(text_height, logo_height)
-
-        box_x1 = image.width - content_width - (inner_padding * 2) - outer_padding
-        box_y1 = image.height - content_height - (inner_padding * 2) - outer_padding
-        box_x2 = image.width - outer_padding
-        box_y2 = image.height - outer_padding
+        box_x2 = image.width - layout["outer_padding"]
+        box_y2 = image.height - layout["outer_padding"]
+        box_x1 = box_x2 - layout["box_width"]
+        box_y1 = box_y2 - layout["box_height"]
 
         draw.rounded_rectangle(
             (box_x1, box_y1, box_x2, box_y2),
-            radius=12,
+            radius=max(8, min(12, layout["box_height"] // 4)),
             fill=(0, 0, 0, 155),
         )
 
-        current_x = box_x1 + inner_padding
-        if logo:
-            logo_y = box_y1 + ((box_y2 - box_y1 - logo_height) // 2)
-            overlay.alpha_composite(logo, (current_x, logo_y))
-            current_x += logo_width + gap_between_logo_and_text
+        current_x = box_x1 + layout["inner_padding"]
+        current_y = box_y1 + layout["inner_padding"]
+        text_x = current_x
+        text_y = current_y
 
-        text_y = box_y1 + ((box_y2 - box_y1 - text_height) // 2) - 1
-        draw.text((current_x, text_y), text, font=font, fill=(255, 255, 255, 225))
+        if layout["logo"] is not None:
+            if layout["layout"] == "horizontal":
+                logo_y = box_y1 + ((layout["box_height"] - layout["logo_height"]) // 2)
+                overlay.alpha_composite(layout["logo"], (current_x, logo_y))
+                text_x = current_x + layout["logo_width"] + layout["gap"]
+                text_y = box_y1 + ((layout["box_height"] - layout["text_height"]) // 2)
+            else:
+                logo_x = box_x1 + ((layout["box_width"] - layout["logo_width"]) // 2)
+                overlay.alpha_composite(layout["logo"], (logo_x, current_y))
+                text_y = current_y + layout["logo_height"] + layout["gap"]
+
+        line_y = text_y
+        for line in layout["lines"]:
+            draw.text((text_x, line_y), line, font=layout["font"], fill=(255, 255, 255, 225))
+            line_y += layout["line_height"] + layout["line_gap"]
 
         result = Image.alpha_composite(image, overlay).convert("RGB")
         result.save(output_path, format="JPEG", quality=95)

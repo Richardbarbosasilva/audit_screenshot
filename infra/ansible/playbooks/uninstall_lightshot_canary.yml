@@ -64,8 +64,40 @@
           } | ConvertTo-Json -Compress
       register: lightshot_uninstall
 
+    - name: Remove stale Lightshot startup entries
+      ansible.windows.win_powershell:
+        script: |
+          $lightshotNames = @('Lightshot', 'LightShot')
+          $runKeys = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
+          )
+
+          foreach ($sid in (Get-ChildItem Registry::HKEY_USERS -ErrorAction SilentlyContinue | Select-Object -ExpandProperty PSChildName)) {
+            if ($sid -match '^S-\d-\d+-.+') {
+              $runKeys += "Registry::HKEY_USERS\\$sid\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+            }
+          }
+
+          foreach ($runKey in $runKeys | Select-Object -Unique) {
+            foreach ($name in $lightshotNames) {
+              Remove-ItemProperty -Path $runKey -Name $name -ErrorAction SilentlyContinue
+            }
+          }
+
+          $startupShortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Startup\Lightshot.lnk'
+          if (Test-Path $startupShortcut) {
+            Remove-Item $startupShortcut -Force
+          }
+
+          @{
+            startupShortcutRemoved = (-not (Test-Path $startupShortcut))
+          } | ConvertTo-Json -Compress
+      register: lightshot_startup_cleanup
+
     - name: Show Lightshot removal summary
       ansible.builtin.debug:
         msg:
           - "Host: {{ inventory_hostname }}"
           - "{{ lightshot_uninstall.output | default([]) }}"
+          - "{{ lightshot_startup_cleanup.output | default([]) }}"

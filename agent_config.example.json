@@ -1,6 +1,6 @@
 {
-  "agent_version": "0.1.3-pilot",
-  "sharex_profile_version": "pilot-4",
+  "agent_version": "0.1.4-pilot",
+  "sharex_profile_version": "pilot-5",
   "poll_interval_seconds": 2,
   "retry_backoff_seconds": 15,
   "retry_backoff_max_seconds": 300,
